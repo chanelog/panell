@@ -1,0 +1,1 @@
+#!/bin/bash\necho "Installing package..."\n# Setup Instructions: Run this script to install the necessary package.\n# Usage: ./INSTALL.sh\n
