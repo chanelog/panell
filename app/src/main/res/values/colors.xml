@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ZiCustom palette: deep dark + neon purple/cyan accent -->
+    <color name="brand_primary">#7C4DFF</color>          <!-- Neon Purple -->
+    <color name="brand_primary_dark">#5E35B1</color>
+    <color name="brand_secondary">#00E5FF</color>        <!-- Neon Cyan -->
+    <color name="brand_accent">#FF4081</color>           <!-- Pink accent for status -->
+
+    <color name="bg_root">#0B0F1A</color>                <!-- Almost black, blue-tinted -->
+    <color name="bg_surface">#141A2B</color>             <!-- Card surface -->
+    <color name="bg_surface_high">#1C2238</color>        <!-- Elevated card -->
+
+    <color name="text_primary">#ECEFF4</color>
+    <color name="text_secondary">#A8B0C2</color>
+    <color name="text_disabled">#5C6479</color>
+
+    <color name="status_connected">#00E676</color>
+    <color name="status_connecting">#FFC400</color>
+    <color name="status_disconnected">#FF5252</color>
+
+    <color name="divider">#222B45</color>
+</resources>

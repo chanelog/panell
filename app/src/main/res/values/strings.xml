@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZiCustom</string>
+    <string name="tagline">ZIVPN UDP Custom Client</string>
+
+    <string name="label_host">Host / Server Address</string>
+    <string name="label_port">Port (UDP)</string>
+    <string name="label_password">UDP Password (obfs)</string>
+    <string name="label_sni">SNI</string>
+    <string name="label_mtu">MTU</string>
+
+    <string name="hint_host">vpn.example.com</string>
+    <string name="hint_port">6666</string>
+    <string name="hint_password">zi</string>
+    <string name="hint_sni">www.cloudflare.com</string>
+    <string name="hint_mtu">1380</string>
+
+    <string name="action_connect">Connect</string>
+    <string name="action_disconnect">Disconnect</string>
+    <string name="action_save">Save Config</string>
+    <string name="action_clear_log">Clear Log</string>
+
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_error">Error</string>
+
+    <string name="notif_channel_name">VPN Status</string>
+    <string name="notif_channel_desc">Shows VPN connection status</string>
+    <string name="notif_running">ZiCustom is running</string>
+
+    <string name="error_host_required">Host wajib diisi</string>
+    <string name="error_port_required">Port wajib diisi (1-65535)</string>
+    <string name="error_password_required">Password wajib diisi</string>
+</resources>
