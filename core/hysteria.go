@@ -87,12 +87,12 @@ func dial(ctx context.Context, cfg config) (*client, error) {
 		pConn = newObfuscator(rawConn, cfg.Password)
 	}
 
-	tlsCfg := &tls.config{
+	tlsCfg := &tls.Config{
 		ServerName:         cfg.SNI,
 		InsecureSkipVerify: cfg.Insecure || true, // ZIVPN public deployments use self-signed certs
 		NextProtos:         []string{"hysteria"},
 	}
-	quicCfg := &quic.config{
+	quicCfg := &quic.Config{
 		HandshakeIdleTimeout: 10 * time.Second,
 		MaxIdleTimeout:       30 * time.Second,
 		KeepAlivePeriod:      10 * time.Second,
@@ -100,7 +100,7 @@ func dial(ctx context.Context, cfg config) (*client, error) {
 	}
 
 	transport := &quic.Transport{Conn: pConn}
-	conn, err := transport.dial(ctx, udpAddr, tlsCfg, quicCfg)
+	conn, err := transport.Dial(ctx, udpAddr, tlsCfg, quicCfg)
 	if err != nil {
 		_ = pConn.Close()
 		return nil, fmt.Errorf("quic dial: %w", err)
