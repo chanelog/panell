@@ -61,13 +61,19 @@ class ZiVpnService : VpnService() {
                 return
             }
 
-            val ok = ZiCore.start(cfg, fd)
-            if (!ok) {
-                broadcast(STATE_ERROR, "Core gagal start")
-                stopTunnel("core start failed")
+            if (!ZiCore.isAvailable()) {
+                broadcast(STATE_ERROR, "Native core .aar tidak ada (lihat CI build)")
+                stopTunnel("native core missing")
                 return
             }
-            broadcast(STATE_CONNECTED, "Tunnel aktif (mode: ${if (isStub()) "stub" else "native"})")
+            val ok = ZiCore.start(cfg, fd)
+            if (!ok) {
+                val msg = ZiCore.lastError() ?: "Core gagal start"
+                broadcast(STATE_ERROR, msg)
+                stopTunnel("core start failed: $msg")
+                return
+            }
+            broadcast(STATE_CONNECTED, "Tunnel aktif (UDP via ZIVPN/Hysteria)")
         } catch (t: Throwable) {
             Log.e(TAG, "startTunnel failed", t)
             broadcast(STATE_ERROR, t.message ?: "unknown error")
@@ -89,10 +95,6 @@ class ZiVpnService : VpnService() {
         stopTunnel("service destroyed")
         super.onDestroy()
     }
-
-    private fun isStub(): Boolean = try {
-        Class.forName("dev.zivpn.Core"); false
-    } catch (_: ClassNotFoundException) { true }
 
     private fun broadcast(state: String, message: String) {
         val i = Intent(BROADCAST_STATE).apply {

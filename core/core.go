@@ -1,31 +1,69 @@
-// Package zivpn is a placeholder for the native ZIVPN/Hysteria-based core.
+// Package zivpn — gomobile entry point.
 //
-// The intent is to wire the existing zivpn-go upstream (e.g. the
-// zahidbd2/zivpn reference implementation) into this package, then build it
-// as an Android .aar via gomobile so the Kotlin layer can call:
+// Kotlin reflection bridge in the Android app calls these methods:
 //
-//   dev.zivpn.Core{}.Start(host, port, password, sni, fd)
-//   dev.zivpn.Core{}.Stop()
+//   dev.zivpn.Core{}.Start(host, port, password, sni, fd)  -> error
+//   dev.zivpn.Core{}.Stop()                               -> error
 //
-// For now we expose only a no-op skeleton so `gomobile bind` can succeed,
-// allowing CI to validate the toolchain end-to-end before real wiring lands.
+// gomobile's bind tool flattens the package into the Java class
+// `dev.zivpn.Core` automatically (the package's go module path is
+// `dev.zivpn` and the exported type is `Core`).
 package zivpn
 
-// Core is exported via gomobile and consumed from Kotlin via reflection.
-type Core struct{}
+import (
+	"context"
+	"errors"
+	"sync"
+)
 
-// Start brings the tunnel up. The fd argument is the tun file descriptor
-// returned by VpnService.Builder.establish() on the Android side.
+// Core is the only type exposed to Java/Kotlin. It owns one Bridge
+// at a time; concurrent Start() calls return an error.
+type Core struct {
+	mu     sync.Mutex
+	bridge *Bridge
+}
+
+// Start brings up the tunnel. fd is the int fd returned by
+// VpnService.Builder.establish().
 func (c *Core) Start(host string, port int, password, sni string, fd int) error {
-	// TODO: dial UDP to host:port using the QUIC + obfuscation parameters
-	// and pump packets between fd and the encrypted transport.
-	_ = host
-	_ = port
-	_ = password
-	_ = sni
-	_ = fd
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.bridge != nil {
+		return errors.New("zivpn: already running")
+	}
+	tun, err := NewTunFromFD(fd)
+	if err != nil {
+		return err
+	}
+	cli, err := Dial(context.Background(), Config{
+		Host:     host,
+		Port:     port,
+		Password: password,
+		SNI:      sni,
+	})
+	if err != nil {
+		_ = tun.Close()
+		return err
+	}
+	br := NewBridge(tun, cli)
+	c.bridge = br
+	go func() {
+		// Run blocks; we don't surface its error back to Java because
+		// gomobile-bound goroutines can't return values. The Android
+		// side observes connection state via its own broadcasts.
+		_ = br.Run(context.Background())
+	}()
 	return nil
 }
 
-// Stop tears the tunnel down.
-func (c *Core) Stop() error { return nil }
+// Stop tears the tunnel down. Safe to call repeatedly.
+func (c *Core) Stop() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.bridge == nil {
+		return nil
+	}
+	err := c.bridge.Close()
+	c.bridge = nil
+	return err
+}

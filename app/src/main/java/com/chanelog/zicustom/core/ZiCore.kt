@@ -4,44 +4,54 @@ import android.util.Log
 import com.chanelog.zicustom.data.VpnConfig
 
 /**
- * Thin abstraction over the native ZIVPN core.
+ * Thin Kotlin façade over the gomobile-built native ZIVPN core.
  *
- * In the open-source release we keep the engine pluggable: when an `.aar`
- * built from the Go ZIVPN core (via gomobile) is dropped into `app/libs/`,
- * the [start] method will delegate to it via reflection. Otherwise, the
- * stub implementation logs the intended action so the rest of the app
- * (UI, VpnService, settings) can be exercised end-to-end.
+ * The native library is built from the Go module under `core/` via
+ * `gomobile bind`, producing `app/libs/zivpn-core.aar`. The bound class
+ * is `dev.zivpn.Core` with two methods:
  *
- * To wire a real engine:
- *   1. Build the gomobile aar exposing class `dev.zivpn.Core`
- *      with methods `start(host,port,password,sni,fd)` and `stop()`.
- *   2. Drop it into `app/libs/zivpn-core.aar` and rebuild.
+ *   start(host: String, port: Long, password: String, sni: String, fd: Long): Throwable?
+ *   stop(): Throwable?
+ *
+ * gomobile maps Go `int` to Java `long`, so we pass [Long] across the boundary.
+ *
+ * If the AAR is missing (CI native build failed) we return false and the
+ * VpnService surfaces an error message to the UI — no silent stubbing.
  */
 object ZiCore {
     private const val TAG = "ZiCore"
 
     @Volatile private var nativeStarted: Boolean = false
+    @Volatile private var lastError: String? = null
+
+    fun lastError(): String? = lastError
+
+    fun isAvailable(): Boolean = try {
+        Class.forName("dev.zivpn.Core"); true
+    } catch (_: ClassNotFoundException) { false }
 
     fun start(cfg: VpnConfig, tunFd: Int): Boolean {
         Log.i(TAG, "start() host=${cfg.host} port=${cfg.port} sni=${cfg.sni} fd=$tunFd")
+        lastError = null
         return try {
             val cls = Class.forName("dev.zivpn.Core")
             val instance = cls.getDeclaredConstructor().newInstance()
-            val m = cls.getMethod(
-                "start",
-                String::class.java, Int::class.javaPrimitiveType,
-                String::class.java, String::class.java,
-                Int::class.javaPrimitiveType
-            )
-            m.invoke(instance, cfg.host, cfg.port, cfg.password, cfg.sni, tunFd)
+            // gomobile signature: Start(host string, port int, password, sni string, fd int) error
+            val method = cls.methods.firstOrNull { it.name == "start" }
+                ?: cls.methods.firstOrNull { it.name == "Start" }
+                ?: error("dev.zivpn.Core has no start() method")
+            method.invoke(instance, cfg.host, cfg.port.toLong(), cfg.password, cfg.sni, tunFd.toLong())
             nativeStarted = true
             true
         } catch (cnf: ClassNotFoundException) {
-            Log.w(TAG, "Native ZIVPN core not bundled; running in stub mode.")
-            // Stub mode: pretend connection succeeded so the UI flow can be tested.
-            true
+            lastError = "Native core not bundled (gomobile build failed in CI)"
+            Log.e(TAG, lastError, cnf)
+            false
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to start native core", t)
+            // gomobile bound methods throw the wrapped Go error as cause.
+            val cause = t.cause ?: t
+            lastError = cause.message ?: cause.javaClass.simpleName
+            Log.e(TAG, "start() failed: $lastError", t)
             false
         }
     }
@@ -52,7 +62,9 @@ object ZiCore {
         try {
             val cls = Class.forName("dev.zivpn.Core")
             val instance = cls.getDeclaredConstructor().newInstance()
-            cls.getMethod("stop").invoke(instance)
+            val method = cls.methods.firstOrNull { it.name == "stop" }
+                ?: cls.methods.firstOrNull { it.name == "Stop" }
+            method?.invoke(instance)
         } catch (t: Throwable) {
             Log.w(TAG, "stop() ignored: ${t.message}")
         } finally {

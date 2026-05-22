@@ -11,7 +11,7 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platforms;android-34 build-tools;34.0.0 platform-tools"
+          packages: "platforms;android-34 build-tools;34.0.0 platform-tools ndk;26.1.10909125"
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -51,9 +51,7 @@ jobs:
           key: ${{ runner.os }}-gomobile-${{ hashFiles('core/go.sum', 'core/go.mod') }}
           restore-keys: ${{ runner.os }}-gomobile-
 
-      # The repo ships only a tiny gradlew shim. Materialize the real wrapper
-      # using the system Gradle installed by setup-java's bundled tools, so
-      # that ./gradlew works for the rest of the build.
+      # The repo ships a tiny gradlew shim. Materialize the real wrapper jar.
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
@@ -62,21 +60,36 @@ jobs:
           gradle wrapper --gradle-version 8.7 --distribution-type bin
           chmod +x gradlew
 
-      # Build the native ZIVPN core into an AAR. This step is best-effort:
-      # if it fails (e.g. NDK quirks), the Android app still builds in stub
-      # mode thanks to the reflection bridge in ZiCore.kt.
-      - name: Build native core (gomobile, optional)
-        id: gomobile
-        continue-on-error: true
+      - name: Resolve Go modules
+        working-directory: core
         run: |
-          set -e
+          go mod tidy
+          cat go.mod
+          ls -la
+
+      - name: Install gomobile
+        run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
-          export PATH="$(go env GOPATH)/bin:$PATH"
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: gomobile init
+        run: |
+          export ANDROID_NDK_HOME=$(ls -d $ANDROID_HOME/ndk/* | head -1)
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
           gomobile init
-          mkdir -p app/libs
-          ( cd core && gomobile bind -target=android -androidapi 21 -o ../app/libs/zivpn-core.aar ./ )
-          ls -la app/libs/
+
+      - name: Build native ZIVPN core (.aar)
+        working-directory: core
+        run: |
+          mkdir -p ../app/libs
+          gomobile bind \
+            -target=android \
+            -androidapi 21 \
+            -javapkg=dev \
+            -o ../app/libs/zivpn-core.aar \
+            ./
+          ls -la ../app/libs/
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
@@ -84,16 +97,30 @@ jobs:
       - name: Build release APK (unsigned)
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
+      - name: Rename APKs
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/*.apk out/ZiCustom-debug.apk
+          cp app/build/outputs/apk/release/*.apk out/ZiCustom-release-unsigned.apk
+          ls -la out/
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: ZiCustom-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: out/ZiCustom-debug.apk
           if-no-files-found: error
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: ZiCustom-release-unsigned
-          path: app/build/outputs/apk/release/*.apk
+          path: out/ZiCustom-release-unsigned.apk
           if-no-files-found: error
+
+      - name: Upload native AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: zivpn-core-aar
+          path: app/libs/zivpn-core.aar
+          if-no-files-found: warn
