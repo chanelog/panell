@@ -40,9 +40,8 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          # v4 cache key — bust everything from previous tainted runs.
-          key: ${{ runner.os }}-gradle-v4-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-gradle-v4-
+          key: ${{ runner.os }}-gradle-v5-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-v5-
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -50,11 +49,9 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          # v4 cache key — bust everything from previous tainted runs.
-          key: ${{ runner.os }}-gomobile-v4-${{ hashFiles('core/go.sum', 'core/go.mod') }}
-          restore-keys: ${{ runner.os }}-gomobile-v4-
+          key: ${{ runner.os }}-gomobile-v5-${{ hashFiles('core/go.sum', 'core/go.mod', 'core/tools.go') }}
+          restore-keys: ${{ runner.os }}-gomobile-v5-
 
-      # The repo ships a tiny gradlew shim. Materialize the real wrapper jar.
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
@@ -67,10 +64,11 @@ jobs:
         working-directory: core
         run: |
           go version
-          # Pull whatever version of x/mobile the proxy currently serves
-          # (latest pseudo-version on master). This avoids the
-          # "unknown revision <hash>" failure mode of pinning to a
-          # commit the proxy hasn't seen yet.
+          # tools.go has a blank import of golang.org/x/mobile/bind which
+          # makes go mod tidy add (and keep!) x/mobile in the graph.
+          # Order matters: tidy first to pick up the import, then `go get`
+          # to bump to whatever the proxy currently serves on master.
+          go mod tidy
           go get golang.org/x/mobile@latest
           go mod tidy
           go mod download
@@ -84,7 +82,6 @@ jobs:
       - name: Install gomobile / gobind
         working-directory: core
         run: |
-          # @latest matches whatever go.mod just resolved.
           go install golang.org/x/mobile/cmd/gomobile@latest
           go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
