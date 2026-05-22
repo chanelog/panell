@@ -40,8 +40,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-gradle-
+          # v3 cache key forces refresh after gomobile wiring change.
+          key: ${{ runner.os }}-gradle-v3-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-v3-
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -49,8 +50,9 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: ${{ runner.os }}-gomobile-${{ hashFiles('core/go.sum', 'core/go.mod') }}
-          restore-keys: ${{ runner.os }}-gomobile-
+          # v3 cache key — bust the previous (tainted) go-mobile cache.
+          key: ${{ runner.os }}-gomobile-v3-${{ hashFiles('core/go.sum', 'core/go.mod', 'core/tools.go') }}
+          restore-keys: ${{ runner.os }}-gomobile-v3-
 
       # The repo ships a tiny gradlew shim. Materialize the real wrapper jar.
       - name: Setup Gradle
@@ -65,19 +67,24 @@ jobs:
         working-directory: core
         run: |
           go version
-          # go mod tidy will create / update go.sum based on go.mod
+          # Force-add golang.org/x/mobile if go.mod / tidy ever drops it.
+          # `go get` here is idempotent: when the version pinned in go.mod
+          # already satisfies the request, it's a no-op.
+          go get golang.org/x/mobile@v0.0.0-20240806205939-81e7c1af3e15
           go mod tidy
           go mod download
           echo "--- go.mod ---"
           cat go.mod
-          echo "--- top-level deps ---"
+          echo "--- modules graph (top 30) ---"
           go list -m all | head -30
+          echo "--- assert x/mobile is present ---"
+          go list -m golang.org/x/mobile
 
       - name: Install gomobile / gobind
         working-directory: core
         run: |
-          # Pin gomobile to a release-tagged commit known to work with Go 1.22
-          # and matching the golang.org/x/mobile pinned in core/go.mod.
+          # Pin to the same commit declared in core/go.mod so gomobile
+          # can find x/mobile in the bind target's module graph.
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20240806205939-81e7c1af3e15
           go install golang.org/x/mobile/cmd/gobind@v0.0.0-20240806205939-81e7c1af3e15
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
