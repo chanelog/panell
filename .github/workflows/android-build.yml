@@ -40,9 +40,9 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          # v3 cache key forces refresh after gomobile wiring change.
-          key: ${{ runner.os }}-gradle-v3-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-gradle-v3-
+          # v4 cache key — bust everything from previous tainted runs.
+          key: ${{ runner.os }}-gradle-v4-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-v4-
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -50,9 +50,9 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          # v3 cache key — bust the previous (tainted) go-mobile cache.
-          key: ${{ runner.os }}-gomobile-v3-${{ hashFiles('core/go.sum', 'core/go.mod', 'core/tools.go') }}
-          restore-keys: ${{ runner.os }}-gomobile-v3-
+          # v4 cache key — bust everything from previous tainted runs.
+          key: ${{ runner.os }}-gomobile-v4-${{ hashFiles('core/go.sum', 'core/go.mod') }}
+          restore-keys: ${{ runner.os }}-gomobile-v4-
 
       # The repo ships a tiny gradlew shim. Materialize the real wrapper jar.
       - name: Setup Gradle
@@ -67,10 +67,11 @@ jobs:
         working-directory: core
         run: |
           go version
-          # Force-add golang.org/x/mobile if go.mod / tidy ever drops it.
-          # `go get` here is idempotent: when the version pinned in go.mod
-          # already satisfies the request, it's a no-op.
-          go get golang.org/x/mobile@v0.0.0-20240806205939-81e7c1af3e15
+          # Pull whatever version of x/mobile the proxy currently serves
+          # (latest pseudo-version on master). This avoids the
+          # "unknown revision <hash>" failure mode of pinning to a
+          # commit the proxy hasn't seen yet.
+          go get golang.org/x/mobile@latest
           go mod tidy
           go mod download
           echo "--- go.mod ---"
@@ -83,10 +84,9 @@ jobs:
       - name: Install gomobile / gobind
         working-directory: core
         run: |
-          # Pin to the same commit declared in core/go.mod so gomobile
-          # can find x/mobile in the bind target's module graph.
-          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20240806205939-81e7c1af3e15
-          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20240806205939-81e7c1af3e15
+          # @latest matches whatever go.mod just resolved.
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: gomobile init
