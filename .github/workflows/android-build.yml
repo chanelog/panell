@@ -26,7 +26,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.22.12"
+          check-latest: false
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -63,20 +64,29 @@ jobs:
       - name: Resolve Go modules
         working-directory: core
         run: |
+          go version
+          # go mod tidy will create / update go.sum based on go.mod
           go mod tidy
+          go mod download
+          echo "--- go.mod ---"
           cat go.mod
-          ls -la
+          echo "--- top-level deps ---"
+          go list -m all | head -30
 
-      - name: Install gomobile
+      - name: Install gomobile / gobind
+        working-directory: core
         run: |
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
+          # Pin gomobile to a release-tagged commit known to work with Go 1.22
+          # and matching the golang.org/x/mobile pinned in core/go.mod.
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20240806205939-81e7c1af3e15
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20240806205939-81e7c1af3e15
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: gomobile init
         run: |
           export ANDROID_NDK_HOME=$(ls -d $ANDROID_HOME/ndk/* | head -1)
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          echo "Using NDK: $ANDROID_NDK_HOME"
           gomobile init
 
       - name: Build native ZIVPN core (.aar)

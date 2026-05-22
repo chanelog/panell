@@ -16,11 +16,11 @@ import (
 	"sync"
 )
 
-// Core is the only type exposed to Java/Kotlin. It owns one Bridge
+// Core is the only type exposed to Java/Kotlin. It owns one bridge
 // at a time; concurrent Start() calls return an error.
 type Core struct {
 	mu     sync.Mutex
-	bridge *Bridge
+	bridge *bridge
 }
 
 // Start brings up the tunnel. fd is the int fd returned by
@@ -31,11 +31,11 @@ func (c *Core) Start(host string, port int, password, sni string, fd int) error 
 	if c.bridge != nil {
 		return errors.New("zivpn: already running")
 	}
-	tun, err := NewTunFromFD(fd)
+	tun, err := newTunFromFD(fd)
 	if err != nil {
 		return err
 	}
-	cli, err := Dial(context.Background(), Config{
+	cli, err := dial(context.Background(), config{
 		Host:     host,
 		Port:     port,
 		Password: password,
@@ -45,7 +45,7 @@ func (c *Core) Start(host string, port int, password, sni string, fd int) error 
 		_ = tun.Close()
 		return err
 	}
-	br := NewBridge(tun, cli)
+	br := newBridge(tun, cli)
 	c.bridge = br
 	go func() {
 		// Run blocks; we don't surface its error back to Java because

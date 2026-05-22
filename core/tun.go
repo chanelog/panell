@@ -14,17 +14,17 @@ import (
 	"sync/atomic"
 )
 
-// TunDevice is a thin wrapper around the *os.File backing the tun fd.
+// tunDevice is a thin wrapper around the *os.File backing the tun fd.
 // We do NOT close the underlying fd in Close() — Android owns it via
 // ParcelFileDescriptor and will close it when the VpnService stops.
-type TunDevice struct {
+type tunDevice struct {
 	f      *os.File
 	closed atomic.Bool
 	mu     sync.Mutex
 }
 
-// NewTunFromFD adopts an int fd into a *os.File without taking ownership.
-func NewTunFromFD(fd int) (*TunDevice, error) {
+// newTunFromFD adopts an int fd into a *os.File without taking ownership.
+func newTunFromFD(fd int) (*tunDevice, error) {
 	if fd < 0 {
 		return nil, errors.New("zivpn: invalid tun fd")
 	}
@@ -35,12 +35,12 @@ func NewTunFromFD(fd int) (*TunDevice, error) {
 		return nil, err
 	}
 	f := os.NewFile(uintptr(dup), "tun")
-	return &TunDevice{f: f}, nil
+	return &tunDevice{f: f}, nil
 }
 
 // Read fills p with one or more raw IP packets. The underlying tun fd
 // returns one packet per read on Android.
-func (t *TunDevice) Read(p []byte) (int, error) {
+func (t *tunDevice) Read(p []byte) (int, error) {
 	if t.closed.Load() {
 		return 0, io.EOF
 	}
@@ -48,7 +48,7 @@ func (t *TunDevice) Read(p []byte) (int, error) {
 }
 
 // Write injects a raw IP packet back into the device.
-func (t *TunDevice) Write(p []byte) (int, error) {
+func (t *tunDevice) Write(p []byte) (int, error) {
 	if t.closed.Load() {
 		return 0, io.ErrClosedPipe
 	}
@@ -58,7 +58,7 @@ func (t *TunDevice) Write(p []byte) (int, error) {
 }
 
 // Close releases our duped fd. The original tun fd remains open.
-func (t *TunDevice) Close() error {
+func (t *tunDevice) Close() error {
 	if !t.closed.CompareAndSwap(false, true) {
 		return nil
 	}

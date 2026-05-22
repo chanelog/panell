@@ -6,10 +6,10 @@
 //   - TCP packets coming out of the tun are detected but currently
 //     dropped; a follow-up iteration will plug in a userspace TCP/IP
 //     stack (gVisor netstack) to splice TCP byte-streams through
-//     client.DialTCP(). Splitting that work isolates the QUIC + obfs
+//     client.dialTCP(). Splitting that work isolates the QUIC + obfs
 //     handshake risk from the TCP-stack risk.
 //
-// One Bridge owns a TunDevice and a Client, plus a small NAT table that
+// One bridge owns a tunDevice and a client, plus a small NAT table that
 // maps incoming reply datagrams back to the original source flow so the
 // reply IP packet has the right addressing.
 package zivpn
@@ -22,28 +22,28 @@ import (
 	"time"
 )
 
-// Bridge wires a TunDevice to a Client.
-type Bridge struct {
-	tun     *TunDevice
-	client  *Client
+// bridge wires a tunDevice to a client.
+type bridge struct {
+	tun     *tunDevice
+	client  *client
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 	udpMu   sync.Mutex
-	udpFlow map[string]FlowKey
+	udpFlow map[string]flowKey
 	stopped atomic.Bool
 }
 
-// NewBridge takes ownership of tun and client until Close().
-func NewBridge(tun *TunDevice, client *Client) *Bridge {
-	return &Bridge{
+// newBridge takes ownership of tun and client until Close().
+func newBridge(tun *tunDevice, client *client) *bridge {
+	return &bridge{
 		tun:     tun,
 		client:  client,
-		udpFlow: make(map[string]FlowKey),
+		udpFlow: make(map[string]flowKey),
 	}
 }
 
 // Run blocks until Close() is invoked or a fatal IO error occurs.
-func (b *Bridge) Run(parent context.Context) error {
+func (b *bridge) Run(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	b.cancel = cancel
 
@@ -64,7 +64,7 @@ func (b *Bridge) Run(parent context.Context) error {
 		if n < 20 {
 			continue
 		}
-		key, payload, _, perr := Parse(buf[:n])
+		key, payload, _, perr := parsePacket(buf[:n])
 		if perr != nil {
 			continue
 		}
@@ -78,7 +78,7 @@ func (b *Bridge) Run(parent context.Context) error {
 	}
 }
 
-func (b *Bridge) handleUDP(key FlowKey, payload []byte) {
+func (b *bridge) handleUDP(key flowKey, payload []byte) {
 	dst := key.DstIP.String()
 	mapKey := dst + ":" + portString(key.DstPort) + "/" + portString(key.SrcPort)
 	b.udpMu.Lock()
@@ -87,10 +87,10 @@ func (b *Bridge) handleUDP(key FlowKey, payload []byte) {
 
 	cp := make([]byte, len(payload))
 	copy(cp, payload)
-	_ = b.client.SendDatagram(dst, key.DstPort, cp)
+	_ = b.client.sendDatagram(dst, key.DstPort, cp)
 }
 
-func (b *Bridge) readDatagrams(ctx context.Context) {
+func (b *bridge) readDatagrams(ctx context.Context) {
 	for {
 		if b.stopped.Load() {
 			return
@@ -121,7 +121,7 @@ func (b *Bridge) readDatagrams(ctx context.Context) {
 		}
 		mapKey := ip.String() + ":" + portString(port)
 		b.udpMu.Lock()
-		var found FlowKey
+		var found flowKey
 		var hit bool
 		for k, v := range b.udpFlow {
 			if startsWith(k, mapKey+"/") {
@@ -134,13 +134,13 @@ func (b *Bridge) readDatagrams(ctx context.Context) {
 		if !hit {
 			continue
 		}
-		reply := BuildUDPReply(found, payload)
+		reply := buildUDPReply(found, payload)
 		_, _ = b.tun.Write(reply)
 	}
 }
 
 // Close stops the bridge.
-func (b *Bridge) Close() error {
+func (b *bridge) Close() error {
 	if !b.stopped.CompareAndSwap(false, true) {
 		return nil
 	}

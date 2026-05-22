@@ -25,9 +25,9 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-// Client is a long-lived Hysteria-v1-style session.
-type Client struct {
-	cfg    Config
+// client is a long-lived Hysteria-v1-style session.
+type client struct {
+	cfg    config
 	pConn  net.PacketConn
 	conn   quic.Connection
 	cancel context.CancelFunc
@@ -35,8 +35,8 @@ type Client struct {
 	wg     sync.WaitGroup
 }
 
-// Config carries the connection parameters supplied from the Android side.
-type Config struct {
+// config carries the connection parameters supplied from the Android side.
+type config struct {
 	Host     string // server FQDN or IP
 	Port     int    // UDP port
 	Password string // UDP obfuscation password (e.g. "zi")
@@ -64,8 +64,8 @@ func (a *authRequest) marshal() []byte {
 	return out
 }
 
-// Dial brings up a new client session.
-func Dial(ctx context.Context, cfg Config) (*Client, error) {
+// dial brings up a new client session.
+func dial(ctx context.Context, cfg config) (*client, error) {
 	if cfg.Host == "" || cfg.Port <= 0 {
 		return nil, errors.New("zivpn: host/port required")
 	}
@@ -84,15 +84,15 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 
 	var pConn net.PacketConn = rawConn
 	if cfg.Password != "" {
-		pConn = NewObfuscator(rawConn, cfg.Password)
+		pConn = newObfuscator(rawConn, cfg.Password)
 	}
 
-	tlsCfg := &tls.Config{
+	tlsCfg := &tls.config{
 		ServerName:         cfg.SNI,
 		InsecureSkipVerify: cfg.Insecure || true, // ZIVPN public deployments use self-signed certs
 		NextProtos:         []string{"hysteria"},
 	}
-	quicCfg := &quic.Config{
+	quicCfg := &quic.config{
 		HandshakeIdleTimeout: 10 * time.Second,
 		MaxIdleTimeout:       30 * time.Second,
 		KeepAlivePeriod:      10 * time.Second,
@@ -100,7 +100,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	}
 
 	transport := &quic.Transport{Conn: pConn}
-	conn, err := transport.Dial(ctx, udpAddr, tlsCfg, quicCfg)
+	conn, err := transport.dial(ctx, udpAddr, tlsCfg, quicCfg)
 	if err != nil {
 		_ = pConn.Close()
 		return nil, fmt.Errorf("quic dial: %w", err)
@@ -127,7 +127,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	stream.SetReadDeadline(time.Time{})
 	_ = stream.Close()
 
-	c := &Client{cfg: cfg, pConn: pConn, conn: conn}
+	c := &client{cfg: cfg, pConn: pConn, conn: conn}
 	ctx2, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 	c.wg.Add(1)
@@ -135,7 +135,7 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) heartbeat(ctx context.Context) {
+func (c *client) heartbeat(ctx context.Context) {
 	defer c.wg.Done()
 	t := time.NewTicker(15 * time.Second)
 	defer t.Stop()
@@ -157,7 +157,7 @@ func (c *Client) heartbeat(ctx context.Context) {
 }
 
 // Close terminates the session.
-func (c *Client) Close() error {
+func (c *client) Close() error {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -174,10 +174,10 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// DialTCP opens a proxied TCP stream to host:port through the tunnel.
+// dialTCP opens a proxied TCP stream to host:port through the tunnel.
 // The protocol on the new stream is: 1-byte type=0x01, 2-byte addrLen,
 // addrLen-byte host, 2-byte port. The server replies with 1-byte status.
-func (c *Client) DialTCP(ctx context.Context, host string, port uint16) (io.ReadWriteCloser, error) {
+func (c *client) dialTCP(ctx context.Context, host string, port uint16) (io.ReadWriteCloser, error) {
 	if c.closed.Load() {
 		return nil, errors.New("zivpn: client closed")
 	}
@@ -208,9 +208,9 @@ func (c *Client) DialTCP(ctx context.Context, host string, port uint16) (io.Read
 	return stream, nil
 }
 
-// SendDatagram pushes one UDP-style datagram through the tunnel.
+// sendDatagram pushes one UDP-style datagram through the tunnel.
 // Layout: 2-byte addrLen | host | 2-byte port | payload.
-func (c *Client) SendDatagram(host string, port uint16, payload []byte) error {
+func (c *client) sendDatagram(host string, port uint16, payload []byte) error {
 	if c.closed.Load() {
 		return errors.New("zivpn: client closed")
 	}

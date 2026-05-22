@@ -11,31 +11,31 @@ import (
 	"net"
 )
 
-// XorObfuscator wraps a net.PacketConn and XORs payload bytes with a
+// xorObfuscator wraps a net.PacketConn and XORs payload bytes with a
 // keystream seeded from the shared password. It implements net.PacketConn
 // so it can be passed straight to quic-go's Transport.
-type XorObfuscator struct {
+type xorObfuscator struct {
 	net.PacketConn
 	key []byte
 }
 
-// NewObfuscator returns an obfuscated wrapper. Pass the same password the
+// newObfuscator returns an obfuscated wrapper. Pass the same password the
 // server is configured with (e.g. "zi", "zivpn", or any custom value in
 // the server's auth list).
-func NewObfuscator(conn net.PacketConn, password string) *XorObfuscator {
+func newObfuscator(conn net.PacketConn, password string) *xorObfuscator {
 	sum := sha256.Sum256([]byte(password))
 	key := sum[:]
-	return &XorObfuscator{PacketConn: conn, key: key}
+	return &xorObfuscator{PacketConn: conn, key: key}
 }
 
-func (o *XorObfuscator) xor(buf []byte) {
+func (o *xorObfuscator) xor(buf []byte) {
 	k := o.key
 	for i := range buf {
 		buf[i] ^= k[i%len(k)]
 	}
 }
 
-func (o *XorObfuscator) ReadFrom(p []byte) (int, net.Addr, error) {
+func (o *xorObfuscator) ReadFrom(p []byte) (int, net.Addr, error) {
 	n, addr, err := o.PacketConn.ReadFrom(p)
 	if n > 0 {
 		o.xor(p[:n])
@@ -43,7 +43,7 @@ func (o *XorObfuscator) ReadFrom(p []byte) (int, net.Addr, error) {
 	return n, addr, err
 }
 
-func (o *XorObfuscator) WriteTo(p []byte, addr net.Addr) (int, error) {
+func (o *xorObfuscator) WriteTo(p []byte, addr net.Addr) (int, error) {
 	// Make a copy so we don't mutate the caller's buffer.
 	buf := make([]byte, len(p))
 	copy(buf, p)
