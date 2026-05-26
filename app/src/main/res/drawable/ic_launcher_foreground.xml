@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Stylized "Z" lightning bolt in neon purple/cyan gradient -->
+    <path android:pathData="M36,30 L72,30 L72,42 L52,42 L72,66 L72,78 L36,78 L36,66 L56,66 L36,42 Z"
+        android:fillColor="#7C4DFF" />
+    <path android:pathData="M40,34 L68,34 L68,40 L48,40 L68,64 L68,74 L40,74 L40,68 L60,68 L40,44 Z"
+        android:fillColor="#00E5FF" />
+</vector>
